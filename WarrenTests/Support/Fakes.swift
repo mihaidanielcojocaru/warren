@@ -93,3 +93,45 @@ final class FakeTailscaleClient: TailscaleClienting, @unchecked Sendable {
 
     func setExitNode(address: String?) throws { exitNodeCalls.append(address) }
 }
+
+/// Stands in for the daemon's loopback API. No socket is ever opened.
+final class FakeLocalAPI: LocalAPIRequesting, @unchecked Sendable {
+
+    private let lock = NSLock()
+    private var _result: Result<Data, Error>
+    private var _requests: [LocalAPICredentials] = []
+
+    var requests: [LocalAPICredentials] {
+        lock.lock(); defer { lock.unlock() }
+        return _requests
+    }
+
+    /// Answers consumed in order; the last one repeats.
+    private var _queue: [Result<Data, Error>] = []
+
+    init(result: Result<Data, Error> = .failure(LocalAPIError.unavailable("not configured"))) {
+        self._result = result
+    }
+
+    convenience init(sequence: [Result<Data, Error>]) {
+        self.init(result: sequence.last ?? .failure(LocalAPIError.unavailable("empty")))
+        _queue = sequence
+    }
+
+    convenience init(json: Data) {
+        self.init(result: .success(json))
+    }
+
+    func setResult(_ result: Result<Data, Error>) {
+        lock.lock(); defer { lock.unlock() }
+        _result = result
+    }
+
+    func statusJSON(using credentials: LocalAPICredentials, timeout: TimeInterval) throws -> Data {
+        lock.lock()
+        _requests.append(credentials)
+        let result = _queue.isEmpty ? _result : _queue.removeFirst()
+        lock.unlock()
+        return try result.get()
+    }
+}

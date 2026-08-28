@@ -105,6 +105,11 @@ struct TailscaleClient: TailscaleClienting {
     let location: TailscaleBinaryLocation
     let runner: ProcessRunning
 
+    /// Polling goes over loopback; the CLI is a fallback and a way to learn the
+    /// port and token once.
+    let localAPI: LocalAPIRequesting
+    let credentials: LocalAPICredentialStore
+
     var statusTimeout: TimeInterval = 5
 
     /// Ping needs longer than status: an unreachable peer is answered by the
@@ -114,21 +119,68 @@ struct TailscaleClient: TailscaleClienting {
     /// `tailscale set` can bounce through an authorization prompt.
     var setTimeout: TimeInterval = 30
 
-    init(runner: ProcessRunning = ProcessRunner(), location: TailscaleBinaryLocation) {
+    init(
+        runner: ProcessRunning = ProcessRunner(),
+        location: TailscaleBinaryLocation,
+        localAPI: LocalAPIRequesting = TailscaleLocalAPI(),
+        credentials: LocalAPICredentialStore = LocalAPICredentialStore()
+    ) {
         self.runner = runner
         self.location = location
+        self.localAPI = localAPI
+        self.credentials = credentials
     }
 
     // MARK: - Status
 
+    /// Prefers the daemon's loopback API and keeps the CLI as a fallback.
+    ///
+    /// The CLI is not a dependable poller on the standalone macOS build: it is the
+    /// GUI app's own binary invoked with arguments, and when that handshake fails
+    /// it prints "The Tailscale GUI failed to start" and **exits 0**. The local API
+    /// is served by the daemon itself, so once the port and token are known —
+    /// one CLI call per launch — polling never touches it again.
+    func fetchStatus() throws -> TailscaleStatus {
+        do {
+            return try statusFromLocalAPI()
+        } catch {
+            return try statusFromCLI()
+        }
+    }
+
+    private func statusFromLocalAPI() throws -> TailscaleStatus {
+        if let cached = credentials.current {
+            do {
+                return try decodeStatus(localAPI.statusJSON(using: cached, timeout: statusTimeout))
+            } catch {
+                // A restarted daemon means a new port and token.
+                credentials.invalidate()
+            }
+        }
+        let fresh = try fetchCredentials()
+        credentials.store(fresh)
+        return try decodeStatus(localAPI.statusJSON(using: fresh, timeout: statusTimeout))
+    }
+
+    private func fetchCredentials() throws -> LocalAPICredentials {
+        let (result, binary) = try execute(["debug", "local-creds"], timeout: statusTimeout)
+        guard let credentials = LocalAPICredentials.parse(result.standardOutputText) else {
+            throw TailscaleClientError.unreadableOutput(
+                Self.unreadableDetail(binary: binary, result: result)
+            )
+        }
+        return credentials
+    }
+
+    private func decodeStatus(_ data: Data) throws -> TailscaleStatus {
+        try JSONDecoder().decode(TailscaleStatus.self, from: data)
+    }
+
     /// Tries each candidate binary until one answers with JSON we can read.
     ///
-    /// Falling back matters because a broken CLI does not announce itself: the
-    /// `tailscale` inside Tailscale.app brokers through the GUI app, and when that
-    /// handshake fails it prints "The Tailscale GUI failed to start" on stdout and
-    /// **exits 0**. An exit code is not evidence of success, so the parse is what
-    /// decides, and the binary that answered is promoted for next time.
-    func fetchStatus() throws -> TailscaleStatus {
+    /// An exit code is not evidence of success here — see `fetchStatus` — so the
+    /// parse decides, and whichever binary answered is promoted for next time.
+    private func statusFromCLI() throws -> TailscaleStatus {
         let binaries = location.all
         guard !binaries.isEmpty else { throw TailscaleClientError.binaryNotFound }
 
@@ -137,8 +189,7 @@ struct TailscaleClient: TailscaleClienting {
             do {
                 let result = try runner.run(binary, arguments: ["status", "--json"],
                                             timeout: statusTimeout)
-                if let status = try? JSONDecoder().decode(TailscaleStatus.self,
-                                                          from: result.standardOutput) {
+                if let status = try? decodeStatus(result.standardOutput) {
                     location.promote(binary)
                     return status
                 }

@@ -10,8 +10,16 @@ final class TailscaleClientTests: XCTestCase {
 
     private let binary = URL(fileURLWithPath: "/Applications/Tailscale.app/Contents/MacOS/tailscale")
 
-    private func makeClient(_ runner: FakeProcessRunner, binary: URL? = nil) -> TailscaleClient {
-        TailscaleClient(runner: runner, location: TailscaleBinaryLocation(url: binary ?? self.binary))
+    /// The local API is faked off by default so these tests exercise the CLI path
+    /// and never reach loopback.
+    private func makeClient(
+        _ runner: FakeProcessRunner,
+        binary: URL? = nil,
+        localAPI: LocalAPIRequesting = FakeLocalAPI()
+    ) -> TailscaleClient {
+        TailscaleClient(runner: runner,
+                        location: TailscaleBinaryLocation(url: binary ?? self.binary),
+                        localAPI: localAPI)
     }
 
     // MARK: - Status
@@ -93,7 +101,8 @@ final class TailscaleClientTests: XCTestCase {
 
     func testMissingBinaryIsReportedWithoutRunningAnything() {
         let runner = FakeProcessRunner(standardOutput: "")
-        let client = TailscaleClient(runner: runner, location: TailscaleBinaryLocation(url: nil))
+        let client = TailscaleClient(runner: runner, location: TailscaleBinaryLocation(url: nil),
+                                     localAPI: FakeLocalAPI())
 
         XCTAssertThrowsError(try client.fetchStatus()) { error in
             XCTAssertEqual(error as? TailscaleClientError, .binaryNotFound)
@@ -156,10 +165,10 @@ final class TailscaleClientTests: XCTestCase {
 
         let location = TailscaleBinaryLocation(candidates: [URL(fileURLWithPath: bundled),
                                                            URL(fileURLWithPath: shim)])
-        let client = TailscaleClient(runner: runner, location: location)
+        let client = TailscaleClient(runner: runner, location: location, localAPI: FakeLocalAPI())
 
         XCTAssertEqual(try client.fetchStatus().peers.count, 5)
-        XCTAssertEqual(runner.invocations.map(\.executable.path), [bundled, shim])
+        XCTAssertEqual(statusCalls(runner).map(\.executable.path), [bundled, shim])
         // The one that answered is tried first next time.
         XCTAssertEqual(location.current?.path, shim)
     }
@@ -168,10 +177,11 @@ final class TailscaleClientTests: XCTestCase {
         let chosen = "/opt/homebrew/bin/tailscale"
         let runner = FakeProcessRunner(standardOutput: "not json")
         let client = TailscaleClient(runner: runner,
-                                     location: TailscaleBinaryLocation(url: URL(fileURLWithPath: chosen)))
+                                     location: TailscaleBinaryLocation(url: URL(fileURLWithPath: chosen)),
+                                     localAPI: FakeLocalAPI())
 
         XCTAssertThrowsError(try client.fetchStatus())
-        XCTAssertEqual(runner.invocations.map(\.executable.path), [chosen],
+        XCTAssertEqual(statusCalls(runner).map(\.executable.path), [chosen],
                        "a user-chosen binary must not be silently swapped for another")
     }
 
@@ -187,7 +197,8 @@ final class TailscaleClientTests: XCTestCase {
         let client = TailscaleClient(runner: runner,
                                      location: TailscaleBinaryLocation(candidates: [
                                         URL(fileURLWithPath: bundled), URL(fileURLWithPath: shim),
-                                     ]))
+                                     ]),
+                                     localAPI: FakeLocalAPI())
         XCTAssertThrowsError(try client.fetchStatus()) { error in
             guard case .unreadableOutput(let detail) = error as? TailscaleClientError else {
                 return XCTFail("expected .unreadableOutput, got \(error)")
@@ -195,7 +206,7 @@ final class TailscaleClientTests: XCTestCase {
             XCTAssertTrue(detail.contains(bundled), detail)
             XCTAssertTrue(detail.contains("GUI failed to start"), detail)
         }
-        XCTAssertEqual(runner.invocations.count, 2, "both should have been tried")
+        XCTAssertEqual(statusCalls(runner).count, 2, "both should have been tried")
     }
 
     // MARK: - Untrusted input
@@ -221,5 +232,13 @@ final class TailscaleClientTests: XCTestCase {
             XCTAssertThrowsError(try client.setExitNode(address: host), "accepted \(host)")
         }
         XCTAssertTrue(runner.invocations.isEmpty, "nothing hostile should have been executed")
+    }
+
+    // MARK: - Helpers
+
+    /// `fetchStatus` also probes `debug local-creds`; these assertions are about
+    /// which binaries were asked for the status itself.
+    private func statusCalls(_ runner: FakeProcessRunner) -> [FakeProcessRunner.Invocation] {
+        runner.invocations.filter { $0.arguments == ["status", "--json"] }
     }
 }

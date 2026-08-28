@@ -40,7 +40,32 @@ enum TailscaleBinaryLocator {
         if let override, !override.trimmingCharacters(in: .whitespaces).isEmpty {
             return isUsable(override) ? [URL(fileURLWithPath: override)] : []
         }
-        return candidatePaths.filter(isUsable).map(URL.init(fileURLWithPath:))
+        return deduplicated(candidatePaths.filter(isUsable).map(URL.init(fileURLWithPath:)))
+    }
+
+    /// Drops paths that name the same file. The volume is case-insensitive, so
+    /// `.../MacOS/tailscale` and `.../MacOS/Tailscale` are one binary, and trying
+    /// both would just fail twice and call it a fallback.
+    static func deduplicated(_ urls: [URL]) -> [URL] {
+        var seen = Set<FileIdentity>()
+        return urls.filter { url in
+            guard let identity = FileIdentity(path: url.path) else { return true }
+            return seen.insert(identity).inserted
+        }
+    }
+
+    private struct FileIdentity: Hashable {
+        let device: Int
+        let inode: UInt64
+
+        init?(path: String) {
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+                  let device = attributes[.systemNumber] as? Int,
+                  let inode = attributes[.systemFileNumber] as? UInt64
+            else { return nil }
+            self.device = device
+            self.inode = inode
+        }
     }
 
     static func isUsable(_ path: String) -> Bool {

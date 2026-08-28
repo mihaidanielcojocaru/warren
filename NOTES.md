@@ -181,9 +181,22 @@ The type names `TailnetSnapshot`, `TailnetState`, `TailnetInfo` and `TailnetFail
 kept their names on purpose — there "tailnet" is Tailscale's word for the network,
 not the old product name.
 
-## 7. Not implemented, on purpose
+## 7. Why polling goes over loopback
 
-The Tailscale LocalAPI. `TailscaleStatus` carries a TODO with the details:
-`tailscale debug local-creds` yields a loopback port and a basic-auth token for
-`GET /localapi/v0/status` (empty username, token as password, `Host:
-local-tailscaled.sock`), which would avoid forking a CLI on every poll.
+Warren polls the daemon's local HTTP API, not the CLI. `tailscale debug local-creds`
+prints a loopback port and a basic-auth token; `GET /localapi/v0/status` on
+`127.0.0.1:<port>` returns the same payload as `status --json`.
+
+That started as an optimisation and became the fix. On the standalone macOS build
+the CLI is the GUI app's own binary (see section 3a) and its handshake with the GUI
+is not reliable. The daemon's API has no such dependency, so the CLI is now forked
+**once per launch** to learn the credentials, and never again while they hold.
+Measured: six consecutive polls, one process.
+
+Verified on 1.102.3: the token is required (401 without it), and the
+`Host: local-tailscaled.sock` header is *not* — it returns 200 either way. Warren
+still sends it, since older builds are documented to want it.
+
+Credentials are cached in memory only, never written to disk: the token grants
+control of Tailscale, and the README's promise that Warren stores no secrets is
+worth more than skipping one subprocess at launch.

@@ -14,11 +14,9 @@ import Foundation
 /// optional or has a default, and decoding is routed through `LossyDecoding` so a
 /// schema change downgrades the menu rather than breaking it.
 ///
-/// - TODO: v2 could skip the process spawn entirely. `tailscale debug local-creds`
-///   prints a loopback port and a basic-auth token for the local API; a
-///   `GET /localapi/v0/status` to `127.0.0.1:<port>` with an empty username, the
-///   token as the password, and a `Host: local-tailscaled.sock` header returns
-///   this same payload without forking a CLI every poll.
+/// The same payload arrives two ways: from `tailscale status --json`, and from the
+/// daemon's loopback API, which is what Warren normally polls. See
+/// `TailscaleLocalAPI`.
 struct TailscaleStatus: Decodable, Equatable {
 
     /// CLI version string, e.g. `1.102.3-t9329c3677-ga522f65e9`.

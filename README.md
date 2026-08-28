@@ -187,13 +187,19 @@ shells out.
 | Layer | What lives there |
 | --- | --- |
 | `Models/` | Codable models for `tailscale status --json`, plus the domain types the UI uses |
-| `Services/` | Process execution, the CLI client, terminal launching, sshfs mounting |
+| `Services/` | The daemon's loopback API, process execution, the CLI client, terminal launching, sshfs mounting |
 | `State/` | The polling store and settings |
 | `UI/`, `Actions/` | Presentation, and the one place side effects happen |
 
-The wire models decode defensively on purpose: `tailscale status --json` is an internal
-CLI surface with no compatibility promise, so unknown keys, nulls and changed types all
-degrade rather than throw, and a single malformed peer never costs you the others.
+The wire models decode defensively on purpose: this is an internal surface with no
+compatibility promise, so unknown keys, nulls and changed types all degrade rather than
+throw, and a single malformed peer never costs you the others.
+
+Polling goes over the daemon's local HTTP API rather than the CLI. The CLI is forked
+once per launch to learn the loopback port and token, and after that not at all — which
+is both faster and considerably more reliable, because on the standalone macOS build the
+`tailscale` command is the GUI app's own binary and its handshake with the GUI can fail
+while still exiting 0. See `NOTES.md`.
 
 ## Releasing
 
