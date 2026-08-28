@@ -14,6 +14,11 @@ struct MenuPanelView: View {
     @ObservedObject var actions: DeviceActions
     @ObservedObject var preferences: Preferences
 
+    /// `SettingsLink` opens the window but cannot bring it forward, and an
+    /// accessory app is never the active one — so the window lands behind
+    /// whatever the user was looking at and appears not to have opened at all.
+    @Environment(\.openSettings) private var openSettings
+
     @State private var isOfflineExpanded = false
 
     /// Measured height of the device list. See `deviceScrollView`.
@@ -155,8 +160,9 @@ struct MenuPanelView: View {
             }
             .buttonStyle(MenuRowButtonStyle())
 
-            SettingsLink {
-                Text("Settings…")
+            Button("Settings…") {
+                NSApp.activate(ignoringOtherApps: true)
+                openSettings()
             }
             .buttonStyle(MenuRowButtonStyle())
 

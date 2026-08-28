@@ -96,7 +96,7 @@ struct TailscaleClient: TailscaleClienting {
     // MARK: - Status
 
     func fetchStatus() throws -> TailscaleStatus {
-        let result = try execute(["status", "--json"], timeout: statusTimeout)
+        let (result, binary) = try execute(["status", "--json"], timeout: statusTimeout)
 
         // Decode stdout whatever the exit code says. A backend that is stopped or
         // logged out still prints a complete payload with the state in it, and
@@ -113,9 +113,7 @@ struct TailscaleClient: TailscaleClienting {
                 message: Self.message(from: result)
             )
         }
-        throw TailscaleClientError.unreadableOutput(
-            result.standardOutput.isEmpty ? "It printed nothing." : "The JSON did not parse."
-        )
+        throw TailscaleClientError.unreadableOutput(Self.unreadableDetail(binary: binary, result: result))
     }
 
     // MARK: - Ping
@@ -125,7 +123,7 @@ struct TailscaleClient: TailscaleClienting {
             throw TailscaleClientError.invalidTarget(host)
         }
         // `--c` really is spelled with two dashes and one letter.
-        let result = try execute(["ping", "--c", "3", host], timeout: pingTimeout)
+        let (result, _) = try execute(["ping", "--c", "3", host], timeout: pingTimeout)
         let output = result.standardOutputText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if !result.didSucceed && output.isEmpty {
@@ -153,7 +151,7 @@ struct TailscaleClient: TailscaleClienting {
             arguments = ["set", "--exit-node="]
         }
 
-        let result = try execute(arguments, timeout: setTimeout)
+        let (result, _) = try execute(arguments, timeout: setTimeout)
         guard result.didSucceed else {
             throw TailscaleClientError.commandFailed(
                 exitCode: result.exitCode,
@@ -164,12 +162,13 @@ struct TailscaleClient: TailscaleClienting {
 
     // MARK: - Plumbing
 
-    private func execute(_ arguments: [String], timeout: TimeInterval) throws -> ProcessResult {
+    /// Returns the binary alongside the result, so failures can name what ran.
+    private func execute(_ arguments: [String], timeout: TimeInterval) throws -> (ProcessResult, URL) {
         guard let executable = location.current else {
             throw TailscaleClientError.binaryNotFound
         }
         do {
-            return try runner.run(executable, arguments: arguments, timeout: timeout)
+            return (try runner.run(executable, arguments: arguments, timeout: timeout), executable)
         } catch let error as ProcessRunnerError {
             switch error {
             case .timedOut(let seconds):
@@ -178,6 +177,23 @@ struct TailscaleClient: TailscaleClienting {
                 throw TailscaleClientError.commandFailed(exitCode: -1, message: reason)
             }
         }
+    }
+
+    /// Says which binary was run and what it actually produced. "The JSON did not
+    /// parse" on its own tells nobody anything; the path matters because the wrong
+    /// binary is the likeliest cause, and the first line of output usually names it.
+    private static func unreadableDetail(binary: URL, result: ProcessResult) -> String {
+        guard !result.standardOutput.isEmpty else {
+            return "\(binary.path) exited \(result.exitCode) without printing anything."
+        }
+        let head = String(data: result.standardOutput.prefix(200), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "(not text)"
+        return """
+        \(binary.path) exited \(result.exitCode) and printed \
+        \(result.standardOutput.count) bytes that are not JSON:
+
+        \(head)
+        """
     }
 
     /// Prefers stderr, falls back to stdout, and keeps it short enough for a menu.

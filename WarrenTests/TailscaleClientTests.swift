@@ -52,12 +52,29 @@ final class TailscaleClientTests: XCTestCase {
         }
     }
 
-    func testFetchStatusReportsUnreadableOutput() {
-        let runner = FakeProcessRunner(standardOutput: "not json at all")
+    /// "The JSON did not parse" tells nobody anything. The message has to name the
+    /// binary that ran — the wrong binary is the likeliest cause — and show what it
+    /// actually printed.
+    func testUnreadableOutputNamesTheBinaryAndQuotesTheOutput() {
+        let runner = FakeProcessRunner(standardOutput: "status --json")
         XCTAssertThrowsError(try makeClient(runner).fetchStatus()) { error in
-            guard case .unreadableOutput = error as? TailscaleClientError else {
+            guard case .unreadableOutput(let detail) = error as? TailscaleClientError else {
                 return XCTFail("expected .unreadableOutput, got \(error)")
             }
+            XCTAssertTrue(detail.contains(self.binary.path), detail)
+            XCTAssertTrue(detail.contains("status --json"), detail)
+            XCTAssertTrue(detail.contains("13 bytes"), detail)
+        }
+    }
+
+    func testEmptyOutputSaysSoRatherThanQuotingNothing() {
+        let runner = FakeProcessRunner(standardOutput: "")
+        XCTAssertThrowsError(try makeClient(runner).fetchStatus()) { error in
+            guard case .unreadableOutput(let detail) = error as? TailscaleClientError else {
+                return XCTFail("expected .unreadableOutput, got \(error)")
+            }
+            XCTAssertTrue(detail.contains("without printing anything"), detail)
+            XCTAssertTrue(detail.contains(self.binary.path), detail)
         }
     }
 
