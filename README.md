@@ -1,119 +1,221 @@
+<div align="center">
+
+<img src="docs/icon.png" width="120" alt="Warren">
+
 # Warren
 
-A macOS menu bar app that lists your Tailscale devices and connects to them in one
-click: SSH into a machine, or open a file transfer session.
+**Your tailnet, one click from the menu bar.**
 
-No Dock icon, no main window, no third-party dependencies — Foundation, SwiftUI and
-AppKit only. Warren never handles credentials; authentication is delegated to `ssh`
-and the keys you already have.
+SSH into any machine on your Tailscale network, open a file transfer session, or grab
+its address — without first opening a terminal to look up an IP.
+
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-1d1d1f?style=flat-square&logo=apple&logoColor=white)](#requirements)
+[![Swift 5.9](https://img.shields.io/badge/Swift-5.9-F05138?style=flat-square&logo=swift&logoColor=white)](#building)
+[![Universal](https://img.shields.io/badge/universal-arm64%20%2B%20x86__64-4A5744?style=flat-square)](#building)
+[![Dependencies: none](https://img.shields.io/badge/dependencies-none-2ea44f?style=flat-square)](#no-dependencies)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+
+<img src="docs/menu.png" width="330" alt="The Warren menu, listing online and offline tailnet devices">
+
+</div>
+
+---
+
+## Why
+
+Tailscale gives every machine you own a stable name and address. Warren puts them in
+your menu bar so you can actually use them: click a device to drop into an SSH session,
+right-click for everything else. No Dock icon, no window, no fuss.
+
+It is free, open source, and does not phone home.
+
+## Features
+
+|  | |
+| --- | --- |
+| **One-click SSH** | Click any device to open a session in your terminal. Ghostty, iTerm2, WezTerm, Kitty, Alacritty and Terminal.app are all supported. |
+| **File transfer** | Mount a device over `sshfs` when macFUSE is installed, or hand it to Cyberduck, Transmit or Mountain Duck. |
+| **Live status** | Online devices with a green dot, offline ones tucked into a collapsed group with "3 hours ago" timestamps. |
+| **Exit nodes** | See which node is carrying your traffic, and switch it from the menu. |
+| **Ping** | Check a peer from the Tailscale layer without leaving the menu. |
+| **Copy anything** | IPv4, hostname, or a ready-to-paste `ssh` command. |
+| **Per-device logins** | A default user name, overridden per machine where you need it. |
+| **Search** | Appears once your tailnet outgrows a dozen devices. |
+| **Quiet by design** | One glyph in the menu bar, two states, and never a badge count. |
 
 ## Requirements
 
-- macOS 14.0 or later
-- Xcode 16 or later (developed against Xcode 26.6 / Swift 6.3, language mode 5)
-- The Tailscale CLI, found automatically at one of:
-  `/Applications/Tailscale.app/Contents/MacOS/tailscale`, `/usr/local/bin/tailscale`,
-  `/opt/homebrew/bin/tailscale`, `/usr/bin/tailscale` — or set explicitly in Settings.
+- macOS 14.0 or later — Apple silicon or Intel
+- [Tailscale](https://tailscale.com/download) installed and signed in
 
-## Build and run
+Warren finds the Tailscale CLI on its own, checking the app bundle first and then
+`/usr/local/bin`, `/opt/homebrew/bin` and `/usr/bin`. You can point it somewhere else in
+Settings if you keep it elsewhere.
+
+## Install
+
+Warren is not notarized for distribution yet, so build it yourself — it takes about a
+minute and needs nothing but Xcode.
+
+```sh
+git clone https://github.com/mihaidanielcojocaru/warren.git
+cd warren
+open Warren.xcodeproj      # then press ⌘R
+```
+
+Or from the command line:
+
+```sh
+xcodebuild build -scheme Warren -configuration Release -destination 'platform=macOS'
+```
+
+The status item appears at the right of your menu bar. There is deliberately no Dock
+icon and no main window.
+
+## First run
+
+The first time you open an SSH session **using Terminal.app or iTerm2**, macOS asks
+whether Warren may control them. Those two are driven with AppleScript, which is the
+only supported way to open a command in a new window, and the prompt is macOS doing its
+job.
+
+If you decline, Warren tells you exactly where to change your mind:
+**System Settings › Privacy & Security › Automation**.
+
+Ghostty, WezTerm, Kitty and Alacritty take an argument vector instead, so they need no
+permission at all. Pick one of those in Settings and you will never see the prompt.
+
+## Using it
+
+**Click** a device to run the default action — SSH, unless you change it.
+**Right-click** (or use the ••• button that appears on hover) for the rest:
+
+- **SSH** and **SSH as…** for a one-off user name
+- **Open in Finder (SFTP)** / **Mount with sshfs**
+- **Copy IPv4**, **Copy Hostname**, **Copy SSH Command**
+- **Ping**
+- **Use as Exit Node** / **Stop Using Exit Node**, on nodes that offer it
+
+Offline devices keep SSH and file transfer enabled on purpose. Tailscale's idea of
+"offline" is a missed heartbeat, and it is often worth trying anyway.
+
+## File transfer, honestly
+
+The Finder cannot mount `sftp://`. Apple removed that years ago, and no amount of
+coaxing brings it back — so Warren does not pretend otherwise. Instead it tries, in
+order:
+
+1. **`sshfs`**, if it and macFUSE are installed. Mounts to `~/Warren Mounts/<device>`
+   and reveals it in the Finder. The same menu item unmounts it afterwards.
+2. **An SFTP client** — whatever is registered for `sftp://`, such as Cyberduck,
+   Transmit or Mountain Duck.
+3. **The clipboard**, with a plain `sftp user@host` command, and an explanation of why
+   the first two were not available.
+
+## Settings
+
+<div align="center">
+<img src="docs/settings.png" width="460" alt="Warren settings">
+</div>
+
+Default SSH user name · per-device overrides · terminal app · what a click does · poll
+interval (5–60s) · path to the `tailscale` binary, with a validity check · launch at
+login.
+
+Polling runs at your chosen interval while the menu is open and drops to once a minute
+while it is closed — enough to keep the icon honest without spawning a process every ten
+seconds in the background.
+
+## Security
+
+Warren is a convenience layer over tools you already trust, and it tries to stay out of
+the way of your security model.
+
+- **It never handles credentials.** No passwords, no keys, no Keychain entitlement.
+  Authentication is `ssh`'s job, using the keys you already have.
+- **Device names are untrusted input.** They come from the network, possibly named by
+  someone else on your tailnet. Nothing is ever interpolated into a shell command:
+  subprocesses take argument vectors, and there is no `sh -c` anywhere in the codebase.
+  The one place a command must become a string — the AppleScript that drives Terminal.app
+  and iTerm2 — single-quotes every element and validates hosts and user names first.
+- **It phones nobody.** No analytics, no update checks, no listening sockets. Settings
+  live in `UserDefaults` and nowhere else.
+- **It asks for nothing it does not need.** No Screen Recording, Accessibility, Full Disk
+  Access, camera, microphone or contacts.
+
+The App Sandbox is **off**, by necessity: Warren spawns the Tailscale CLI and reads
+`/Library/Tailscale`, neither of which survives sandboxing. The hardened runtime is on.
+
+<a id="no-dependencies"></a>
+## No dependencies
+
+Foundation, SwiftUI and AppKit. No packages, no vendored code, nothing to audit but the
+app itself.
+
+## Building
 
 ```sh
 xcodebuild build -scheme Warren -destination 'platform=macOS'
 xcodebuild test  -scheme Warren -destination 'platform=macOS'
 ```
 
-Or open `Warren.xcodeproj` and press ⌘R. The status item appears at the right of
-the menu bar; there is deliberately no Dock icon (`LSUIElement`).
+The test suite runs entirely offline: the Tailscale CLI and the process layer are both
+behind protocols and faked, and the tailnet comes from a checked-in JSON fixture. No test
+shells out.
 
-The test target has no network and no subprocesses: `TailscaleClienting` and
-`ProcessRunning` are faked, and the tailnet comes from
-`WarrenTests/Fixtures/status-sample.json`.
+| Layer | What lives there |
+| --- | --- |
+| `Models/` | Codable models for `tailscale status --json`, plus the domain types the UI uses |
+| `Services/` | Process execution, the CLI client, terminal launching, sshfs mounting |
+| `State/` | The polling store and settings |
+| `UI/`, `Actions/` | Presentation, and the one place side effects happen |
 
-## Architecture
+The wire models decode defensively on purpose: `tailscale status --json` is an internal
+CLI surface with no compatibility promise, so unknown keys, nulls and changed types all
+degrade rather than throw, and a single malformed peer never costs you the others.
 
-| Layer | Files | Responsibility |
-| --- | --- | --- |
-| Models | `Models/TailscaleStatus.swift`, `LossyDecoding.swift` | Wire format. Every field optional or defaulted; decoding degrades, never throws. |
-| | `Models/Device.swift`, `TailnetSnapshot.swift` | Domain model the UI is written against, plus `TailnetState`. |
-| Services | `Services/ProcessRunner.swift` | `Process` with a timeout, behind `ProcessRunning`. |
-| | `Services/TailscaleClient.swift` | `status --json`, `ping`, `set --exit-node`, behind `TailscaleClienting`. |
-| | `Services/TerminalLauncher.swift`, `MountManager.swift` | Side effects, protocol-backed. |
-| State | `State/DeviceStore.swift`, `Preferences.swift` | Polling loop and settings. |
-| UI | `UI/*`, `Actions/DeviceActions.swift` | Presentation only; all side effects go through `DeviceActions`. |
-| Root | `App/AppEnvironment.swift` | The one place concrete implementations are chosen. |
+## Releasing
 
-### Untrusted input
-
-Device names come from the network. Nothing in the app builds a shell command by
-interpolation: `ProcessRunning` takes an argument vector and there is no `sh -c`
-variant. The single exception is Terminal.app and iTerm2, which accept a *shell
-command line* over AppleScript — those go through `Shell.commandLine`, which
-single-quotes every element, and hosts and user names are validated against
-`ConnectionTarget` first. `ShellTests` pins this down.
-
-## Distribution
-
-Developer ID + notarization, not the App Store. The App Sandbox is deliberately
-**off**: the app spawns the Tailscale CLI and reads `/Library/Tailscale`, neither of
-which survives sandboxing.
+Signed and notarized builds go out under Developer ID:
 
 ```sh
-# 1. Archive
-xcodebuild archive \
-  -scheme Warren \
-  -configuration Release \
-  -destination 'generic/platform=macOS' \
-  -archivePath build/Warren.xcarchive
+xcodebuild archive -scheme Warren -configuration Release \
+  -destination 'generic/platform=macOS' -archivePath build/Warren.xcarchive
 
-# 2. Sign with Developer ID (hardened runtime is already on in the project)
 codesign --force --options runtime --timestamp \
   --entitlements Warren/Warren.entitlements \
-  --sign "Developer ID Application: YOUR NAME (8VBMHL3Y6P)" \
+  --sign "Developer ID Application: YOUR NAME (TEAMID)" \
   build/Warren.xcarchive/Products/Applications/Warren.app
-
-codesign --verify --deep --strict --verbose=2 \
-  build/Warren.xcarchive/Products/Applications/Warren.app
-
-# 3. Notarize (store credentials once)
-xcrun notarytool store-credentials "warren-notary" \
-  --apple-id "you@example.com" --team-id 8VBMHL3Y6P --password "app-specific-password"
 
 ditto -c -k --keepParent \
   build/Warren.xcarchive/Products/Applications/Warren.app build/Warren.zip
-
 xcrun notarytool submit build/Warren.zip --keychain-profile "warren-notary" --wait
-
-# 4. Staple and verify
 xcrun stapler staple build/Warren.xcarchive/Products/Applications/Warren.app
-spctl -a -vvv -t exec build/Warren.xcarchive/Products/Applications/Warren.app
 ```
 
-Re-zip **after** stapling for distribution — the ticket is stapled to the `.app`,
-not to the archive you submitted.
+Re-zip **after** stapling — the ticket attaches to the `.app`, not to the archive you
+submitted.
 
-The Release build is a universal binary; confirm with
-`lipo -info Warren.app/Contents/MacOS/Warren` (expect `x86_64 arm64`).
+## Contributing
 
-## Permissions
+Issues and pull requests are welcome. If you have one of the terminals that is hard to
+test against — Ghostty, WezTerm, Kitty, Alacritty — confirming that its argument syntax
+works on your machine is genuinely useful; see `NOTES.md` for what is verified and what
+is not.
 
-Warren asks for as little as it can, and only when you use the feature that needs it.
+## Support
 
-| Prompt | When | Why | If you decline |
-| --- | --- | --- | --- |
-| **Automation** — "Warren wants access to control Terminal" | First SSH using Terminal.app or iTerm2 | Those two are driven by AppleScript (`do script`), the only supported way to open a command in a new window. Declared as `NSAppleEventsUsageDescription`, and entitled with `com.apple.security.automation.apple-events` because the hardened runtime blocks Apple events otherwise. | Warren shows an alert naming System Settings › Privacy & Security › Automation. Ghostty, WezTerm, Kitty and Alacritty take an argument vector and need no permission at all. |
-| **Login item** | Turning on "Launch at login" | `SMAppService.mainApp` registration. macOS may show its own "Warren added a login item" notification. | Nothing else is affected. |
-| **File access** | Mounting with sshfs | Creates `~/Warren Mounts/<device>`. This is `sshfs`'s own access, not Warren's. | Warren falls back to an `sftp://` handler, then to offering the command on the clipboard. |
+Warren is free and always will be. If it saves you some typing, you can say thanks:
 
-Warren does **not** request Screen Recording, Accessibility, Full Disk Access, camera,
-microphone, or contacts, and it opens no listening sockets. It has no Keychain
-entitlement and stores no secrets: every setting lives in `UserDefaults`.
+<a href="https://buymeacoffee.com/mihaidanielcojocaru">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="50" alt="Buy Me A Coffee">
+</a>
 
-## Settings
+## License
 
-Default SSH user name · per-device user name overrides (keyed by DNS name) ·
-terminal app · what a left-click does · poll interval (5–60s) · path to the
-`tailscale` binary, with a validity check · launch at login.
+[MIT](LICENSE) — use it, fork it, ship it.
 
-Polling runs at your chosen interval while the menu is open and drops to once a
-minute while it is closed, which keeps the status icon honest without spawning a
-process every ten seconds in the background.
+---
+
+<sub>Warren is an independent project and is not affiliated with, endorsed by, or
+sponsored by Tailscale Inc. "Tailscale" is a trademark of its respective owner.</sub>

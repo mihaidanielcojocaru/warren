@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+
+# Build products from icons/make-icons.sh — the real assets live in
+# Warren/Assets.xcassets, these are just intermediates.
+icons/Warren.iconset/
+icons/Warren.icns
+icons/*.png
