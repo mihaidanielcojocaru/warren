@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Warren</title>
+  <defs>
+    <!-- Deep loam body: cool, desaturated earth so the warm interior reads as the only light source -->
+    <linearGradient id="loam" x1="0.18" y1="0" x2="0.72" y2="1">
+      <stop offset="0"    stop-color="#4A5744"/>
+      <stop offset="0.38" stop-color="#333D2F"/>
+      <stop offset="1"    stop-color="#141A13"/>
+    </linearGradient>
+
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"    stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="0.42" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Light pooling deep inside the tunnel -->
+    <radialGradient id="depth" cx="0.5" cy="0.93" r="0.80">
+      <stop offset="0"    stop-color="#FFE0A0"/>
+      <stop offset="0.09" stop-color="#F5B942"/>
+      <stop offset="0.26" stop-color="#8A4A12"/>
+      <stop offset="0.55" stop-color="#2A1706"/>
+      <stop offset="1"    stop-color="#120A03"/>
+    </radialGradient>
+
+    <filter id="glow" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="30"/>
+    </filter>
+
+    <filter id="cast" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#000000" flood-opacity="0.34"/>
+    </filter>
+
+    <path id="mouth" d="M292 700 L292 520 A220 220 0 0 1 732 520 L732 700 Z"/>
+    <clipPath id="inside"><use href="#mouth"/></clipPath>
+  </defs>
+
+  <!-- Body -->
+  <g filter="url(#cast)">
+    <rect x="100" y="94" width="824" height="824" rx="185" fill="url(#loam)"/>
+    <rect x="100" y="94" width="824" height="824" rx="185" fill="url(#gloss)"/>
+  </g>
+
+  <!-- Tunnel mouth -->
+  <use href="#mouth" fill="url(#depth)"/>
+
+  <!-- Amber pooling at the far end -->
+  <g clip-path="url(#inside)">
+    <ellipse cx="512" cy="690" rx="92" ry="56" fill="#FFE7BC" opacity="0.92" filter="url(#glow)"/>
+  </g>
+
+  <!-- Depth ribs: the tunnel has structure receding away from you -->
+  <g clip-path="url(#inside)" fill="none" stroke="#FFC672" stroke-opacity="0.15" stroke-width="12">
+    <path d="M347 700 L347 535 A165 165 0 0 1 677 535 L677 700"/>
+    <path d="M397 700 L397 555 A115 115 0 0 1 627 555 L627 700"/>
+  </g>
+
+  <!-- Cool rim light where the mouth meets the earth -->
+  <path d="M292 700 L292 520 A220 220 0 0 1 732 520 L732 700"
+        fill="none" stroke="#C2D2B6" stroke-opacity="0.26" stroke-width="9"/>
+
+  <!-- Warm spill onto the ground just outside the mouth -->
+  <g opacity="0.30">
+    <ellipse cx="512" cy="706" rx="180" ry="20" fill="#F5B942" filter="url(#glow)"/>
+  </g>
+</svg>

@@ -118,6 +118,33 @@ above was found and confirmed fixed.
   takes focus and closes it anyway, and staying open is useful for the copy actions.
 - **"Settings…"** uses `SettingsLink`, so it works without private selectors.
 
+## 5b. Icons
+
+Artwork lives in `icons/` as SVG: `warren-appicon.svg` plus the two menu bar
+templates. `icons/make-icons.sh` renders them with `rsvg-convert`, which needs
+`brew install librsvg` — not installed here, and there is no Homebrew on this
+machine either, so the checked-in PNGs were produced with a small WebKit-based
+rasteriser instead (`WKWebView` is the only SVG engine on a stock macOS install).
+Either route gives the same result; the script remains the documented one.
+
+What is in the catalog:
+
+- `AppIcon.appiconset` — ten PNGs, each rendered straight from the SVG at its own
+  size rather than downscaled from 1024, so the small ones get the vector's own
+  hinting. Verified legible at 32px; at 16px it is soft and the drop shadow
+  bleeds slightly into the corners, which is normal for macOS at that size.
+- `WarrenTemplate.imageset` / `WarrenOfflineTemplate.imageset` — 18pt at @1x and
+  @2x (the Mac has no @3x), with `template-rendering-intent: template` so AppKit
+  tints them for light, dark and the highlighted state. Confirmed pure black plus
+  alpha: filled areas are rgb 0 / alpha 1, everything else alpha 0.
+
+`MenuBarIcon` picks between them: the whole arch only in `.ready`, the struck
+arch in every other state including `.loading`. `MenuBarIconTests` pins that down,
+since the two assets existing is no guarantee the right one is chosen.
+
+To regenerate after editing the SVGs, either run `icons/make-icons.sh` with
+librsvg installed, or re-render at the sizes listed above.
+
 ## 6. Naming
 
 Everything user-facing is "Warren": the menu says "Quit Warren", mounts land in
