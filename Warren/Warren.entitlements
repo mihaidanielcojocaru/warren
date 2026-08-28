@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  The hardened runtime blocks outgoing Apple events unless the app carries this
+	  entitlement. Warren needs it to drive Terminal.app / iTerm2 via NSAppleScript.
+	  The App Sandbox is deliberately OFF (see README): the app spawns the tailscale
+	  CLI and reads /Library/Tailscale, neither of which survives sandboxing.
+	-->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
+</plist>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+  <title>Warren menu bar icon — normal</title>
+  <!--
+    Template image: pure black plus alpha only. macOS tints this automatically
+    for light mode, dark mode, and the highlighted (menu-open) state.
+    Never add color here.
+  -->
+  <path fill="#000000" fill-rule="evenodd"
+        d="M2.6 15.4 V9.4 a6.4 6.4 0 0 1 12.8 0 V15.4 Z
+           M4.4 15.4 V9.4 a4.6 4.6 0 0 1 9.2 0 V15.4 Z"/>
+</svg>
