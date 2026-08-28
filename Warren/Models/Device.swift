@@ -18,7 +18,8 @@ struct Device: Identifiable, Hashable {
     /// the public key, else the `Peer` map key the node arrived under.
     let id: String
 
-    /// Short name for the menu, with the MagicDNS suffix stripped.
+    /// Name for the menu: the node's own `HostName` where it has one, else the
+    /// MagicDNS label with the suffix stripped. See `displayName(dnsName:…)`.
     let displayName: String
 
     /// `HostName` as reported by the node itself.
@@ -108,18 +109,24 @@ extension Device {
         return name.isEmpty ? nil : name
     }
 
-    /// `nas.tailnet-example.ts.net` → `nas`.
+    /// The name to show in the menu.
     ///
-    /// Prefers the DNS name over `HostName` because that is the name the tailnet
-    /// agrees on — two machines can report the same `HostName`, but MagicDNS
-    /// de-duplicates them (`nas-1`, `nas-2`). Falls back to `HostName`, then to an
-    /// address, because the menu always needs something to render.
+    /// Prefers `HostName` — the name the machine calls itself, and the one the
+    /// user recognises: `Mihai's MacBook Air` rather than `mihais-macbook-air`,
+    /// which is only MagicDNS's lower-cased, hyphenated derivative of it.
+    ///
+    /// Falls back to the MagicDNS label, then to an address, because the menu
+    /// always needs something to render. Note that two machines can report the
+    /// same `HostName`; the rows are still distinguishable by their tooltip,
+    /// which shows the full DNS name, and their order is stable because
+    /// `TailnetSnapshot` tie-breaks on node id.
     static func displayName(
         dnsName: String?,
         hostName: String?,
         magicDNSSuffix: String?,
         fallbackAddress: String?
     ) -> String {
+        if let hostName, !hostName.isEmpty { return hostName }
         if let dnsName {
             // Strip the tailnet's own suffix when it matches; otherwise fall back
             // to the first label, which is the right answer for a node shared in
@@ -134,7 +141,6 @@ extension Device {
             }
             return dnsName
         }
-        if let hostName, !hostName.isEmpty { return hostName }
         if let fallbackAddress { return fallbackAddress }
         return "Unnamed device"
     }

@@ -14,11 +14,25 @@ final class DeviceMappingTests: XCTestCase {
 
     // MARK: - Names
 
+    /// The name the machine calls itself wins: MagicDNS only ever holds a
+    /// lower-cased, hyphenated derivative of it.
+    func testDisplayNamePrefersHostNameOverTheMagicDNSLabel() {
+        XCTAssertEqual(
+            Device.displayName(
+                dnsName: "mihais-macbook-air.tailnet-example.ts.net",
+                hostName: "Mihai's MacBook Air",
+                magicDNSSuffix: suffix,
+                fallbackAddress: nil
+            ),
+            "Mihai's MacBook Air"
+        )
+    }
+
     func testDisplayNameStripsMagicDNSSuffixAndTrailingDot() {
         XCTAssertEqual(
             Device.displayName(
                 dnsName: "nas.tailnet-example.ts.net",
-                hostName: "nas",
+                hostName: nil,
                 magicDNSSuffix: suffix,
                 fallbackAddress: nil
             ),
@@ -32,7 +46,7 @@ final class DeviceMappingTests: XCTestCase {
         XCTAssertEqual(
             Device.displayName(
                 dnsName: "printer.other-tailnet.ts.net",
-                hostName: "printer",
+                hostName: nil,
                 magicDNSSuffix: suffix,
                 fallbackAddress: nil
             ),
@@ -40,18 +54,39 @@ final class DeviceMappingTests: XCTestCase {
         )
     }
 
-    func testDisplayNameFallsBackThroughHostNameToAddress() {
+    /// HostName, then the MagicDNS label, then an address, then a placeholder —
+    /// the menu always needs something to render.
+    func testDisplayNameFallsBackThroughDNSLabelToAddress() {
         XCTAssertEqual(
-            Device.displayName(dnsName: nil, hostName: "spare-iphone", magicDNSSuffix: suffix, fallbackAddress: "100.64.0.5"),
+            Device.displayName(dnsName: nil, hostName: "spare-iphone",
+                               magicDNSSuffix: suffix, fallbackAddress: "100.64.0.5"),
             "spare-iphone"
         )
         XCTAssertEqual(
-            Device.displayName(dnsName: nil, hostName: nil, magicDNSSuffix: suffix, fallbackAddress: "100.64.0.5"),
+            Device.displayName(dnsName: "nas.\(suffix)", hostName: nil,
+                               magicDNSSuffix: suffix, fallbackAddress: "100.64.0.5"),
+            "nas"
+        )
+        XCTAssertEqual(
+            Device.displayName(dnsName: nil, hostName: nil,
+                               magicDNSSuffix: suffix, fallbackAddress: "100.64.0.5"),
             "100.64.0.5"
         )
         XCTAssertEqual(
-            Device.displayName(dnsName: nil, hostName: nil, magicDNSSuffix: suffix, fallbackAddress: nil),
+            Device.displayName(dnsName: nil, hostName: nil,
+                               magicDNSSuffix: suffix, fallbackAddress: nil),
             "Unnamed device"
+        )
+    }
+
+    /// Names with spaces and punctuation reach a mount path and an sshfs option,
+    /// so they have to survive the round trip intact.
+    func testDisplayNameKeepsSpacesAndPunctuation() {
+        XCTAssertEqual(
+            Device.displayName(dnsName: "s22-al-utilizatorului-maria.\(suffix)",
+                               hostName: "S22 al utilizatorului Maria",
+                               magicDNSSuffix: suffix, fallbackAddress: nil),
+            "S22 al utilizatorului Maria"
         )
     }
 
