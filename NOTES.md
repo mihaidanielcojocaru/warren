@@ -55,6 +55,31 @@ been run for real. The argument vectors are verified against `tailscale set --he
 `set --exit-node <ip>` and `set --exit-node=` to clear. Failure is surfaced in an
 alert that mentions the possible authorization prompt, per the brief.
 
+## 3a. The Tailscale CLI inside Tailscale.app is not self-contained
+
+`/Applications/Tailscale.app/Contents/MacOS/tailscale` is not a standalone CLI on
+the standalone (`io.tailscale.ipn.macsys`) build. It brokers through the GUI app,
+and when that handshake fails it prints
+
+```
+The Tailscale GUI failed to start: The operation couldn't be completed.
+(Tailscale.CLIError error 3.)
+```
+
+on **stdout** and **exits 0**. So a zero exit code is not evidence of success, and
+a client that trusts it reports a confusing "unreadable output" error while a
+perfectly good CLI sits at `/usr/local/bin/tailscale`.
+
+`TailscaleClient.fetchStatus` therefore treats a successful *parse* as the only
+proof, and walks the candidate list until one answers, promoting whichever did so
+the next poll goes straight there. An explicit override in Settings is exempt:
+swapping a user-chosen binary for a different one behind their back would be worse
+than failing.
+
+This was intermittent — all three binaries answered correctly when probed
+directly — so it is a race or a state inside Tailscale rather than a fixed
+property of that binary. Warren cannot fix that, only stop being fooled by it.
+
 ## 4. Things I checked rather than assumed
 
 - **`tailscale status --json` schema** — read off your live daemon (key names and

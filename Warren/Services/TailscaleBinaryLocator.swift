@@ -24,10 +24,23 @@ enum TailscaleBinaryLocator {
     ///   menu can say the configured path is wrong instead of quietly using
     ///   another binary.
     static func locate(override: String?) -> URL? {
+        usableCandidates(override: override).first
+    }
+
+    /// Every candidate that exists and can be run, best first.
+    ///
+    /// More than one matters: the `tailscale` inside Tailscale.app is not a
+    /// self-contained CLI on the standalone build — it brokers through the GUI
+    /// app, and when that handshake fails it prints "The Tailscale GUI failed to
+    /// start" **and still exits 0**. The caller needs somewhere else to turn.
+    ///
+    /// An explicit override is returned alone: if the user named a binary, using
+    /// a different one behind their back would be worse than failing.
+    static func usableCandidates(override: String?) -> [URL] {
         if let override, !override.trimmingCharacters(in: .whitespaces).isEmpty {
-            return isUsable(override) ? URL(fileURLWithPath: override) : nil
+            return isUsable(override) ? [URL(fileURLWithPath: override)] : []
         }
-        return candidatePaths.first(where: isUsable).map(URL.init(fileURLWithPath:))
+        return candidatePaths.filter(isUsable).map(URL.init(fileURLWithPath:))
     }
 
     static func isUsable(_ path: String) -> Bool {

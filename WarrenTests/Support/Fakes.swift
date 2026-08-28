@@ -19,6 +19,8 @@ final class FakeProcessRunner: ProcessRunning, @unchecked Sendable {
     private let lock = NSLock()
     private var _invocations: [Invocation] = []
     private var _result: Result<ProcessResult, Error>
+    /// Per-executable answers, for testing the fallback between binaries.
+    private var _resultsByPath: [String: Result<ProcessResult, Error>] = [:]
 
     var invocations: [Invocation] {
         lock.lock(); defer { lock.unlock() }
@@ -47,10 +49,28 @@ final class FakeProcessRunner: ProcessRunning, @unchecked Sendable {
         )))
     }
 
+    /// Makes one specific executable answer differently from the rest.
+    func setResult(_ result: Result<ProcessResult, Error>, forPath path: String) {
+        lock.lock(); defer { lock.unlock() }
+        _resultsByPath[path] = result
+    }
+
+    func setOutput(_ output: String, exitCode: Int32 = 0, forPath path: String) {
+        setResult(.success(ProcessResult(exitCode: exitCode,
+                                         standardOutput: Data(output.utf8),
+                                         standardError: "")), forPath: path)
+    }
+
+    func setOutput(_ output: Data, exitCode: Int32 = 0, forPath path: String) {
+        setResult(.success(ProcessResult(exitCode: exitCode,
+                                         standardOutput: output,
+                                         standardError: "")), forPath: path)
+    }
+
     func run(_ executable: URL, arguments: [String], timeout: TimeInterval) throws -> ProcessResult {
         lock.lock()
         _invocations.append(Invocation(executable: executable, arguments: arguments, timeout: timeout))
-        let result = _result
+        let result = _resultsByPath[executable.path] ?? _result
         lock.unlock()
         return try result.get()
     }

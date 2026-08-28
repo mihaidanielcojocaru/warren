@@ -22,7 +22,9 @@ final class AppEnvironment: ObservableObject {
     init() {
         let preferences = Preferences()
         let runner = ProcessRunner()
-        let binaryLocation = TailscaleBinaryLocation(url: preferences.resolvedTailscaleURL())
+        let binaryLocation = TailscaleBinaryLocation(
+            candidates: preferences.tailscaleBinaryCandidates()
+        )
 
         let client = TailscaleClient(runner: runner, location: binaryLocation)
         let terminalLauncher = TerminalLauncher()
@@ -47,7 +49,7 @@ final class AppEnvironment: ObservableObject {
             .removeDuplicates()
             .sink { [weak store] path in
                 binaryLocation.update(
-                    TailscaleBinaryLocator.locate(override: path.isEmpty ? nil : path)
+                    candidates: TailscaleBinaryLocator.usableCandidates(override: path.isEmpty ? nil : path)
                 )
                 store?.refresh()
             }

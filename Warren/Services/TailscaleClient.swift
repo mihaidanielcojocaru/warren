@@ -38,22 +38,48 @@ enum TailscaleClientError: LocalizedError, Equatable {
 final class TailscaleBinaryLocation: @unchecked Sendable {
 
     private let lock = NSLock()
-    private var url: URL?
+    private var candidates: [URL]
 
     init(url: URL? = nil) {
-        self.url = url
+        self.candidates = url.map { [$0] } ?? []
     }
 
+    init(candidates: [URL]) {
+        self.candidates = candidates
+    }
+
+    /// The binary to reach for first.
     var current: URL? {
         lock.lock()
         defer { lock.unlock() }
-        return url
+        return candidates.first
+    }
+
+    /// Everything worth trying, best first.
+    var all: [URL] {
+        lock.lock()
+        defer { lock.unlock() }
+        return candidates
     }
 
     func update(_ url: URL?) {
+        update(candidates: url.map { [$0] } ?? [])
+    }
+
+    func update(candidates: [URL]) {
         lock.lock()
         defer { lock.unlock() }
-        self.url = url
+        self.candidates = candidates
+    }
+
+    /// Move the binary that actually answered to the front, so the next poll does
+    /// not pay for the broken one again.
+    func promote(_ url: URL) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard candidates.first != url, let index = candidates.firstIndex(of: url) else { return }
+        candidates.remove(at: index)
+        candidates.insert(url, at: 0)
     }
 }
 
@@ -95,25 +121,36 @@ struct TailscaleClient: TailscaleClienting {
 
     // MARK: - Status
 
+    /// Tries each candidate binary until one answers with JSON we can read.
+    ///
+    /// Falling back matters because a broken CLI does not announce itself: the
+    /// `tailscale` inside Tailscale.app brokers through the GUI app, and when that
+    /// handshake fails it prints "The Tailscale GUI failed to start" on stdout and
+    /// **exits 0**. An exit code is not evidence of success, so the parse is what
+    /// decides, and the binary that answered is promoted for next time.
     func fetchStatus() throws -> TailscaleStatus {
-        let (result, binary) = try execute(["status", "--json"], timeout: statusTimeout)
+        let binaries = location.all
+        guard !binaries.isEmpty else { throw TailscaleClientError.binaryNotFound }
 
-        // Decode stdout whatever the exit code says. A backend that is stopped or
-        // logged out still prints a complete payload with the state in it, and
-        // whether the CLI also exits non-zero for those cases is an implementation
-        // detail we would rather not depend on. Only a payload we cannot read at
-        // all becomes an error.
-        if let status = try? JSONDecoder().decode(TailscaleStatus.self, from: result.standardOutput) {
-            return status
+        var firstFailure: TailscaleClientError?
+        for binary in binaries {
+            do {
+                let result = try runner.run(binary, arguments: ["status", "--json"],
+                                            timeout: statusTimeout)
+                if let status = try? JSONDecoder().decode(TailscaleStatus.self,
+                                                          from: result.standardOutput) {
+                    location.promote(binary)
+                    return status
+                }
+                firstFailure = firstFailure ?? (result.didSucceed
+                    ? .unreadableOutput(Self.unreadableDetail(binary: binary, result: result))
+                    : .commandFailed(exitCode: result.exitCode, message: Self.message(from: result)))
+            } catch let error as ProcessRunnerError {
+                firstFailure = firstFailure ?? Self.clientError(for: error)
+            }
         }
-
-        if !result.didSucceed {
-            throw TailscaleClientError.commandFailed(
-                exitCode: result.exitCode,
-                message: Self.message(from: result)
-            )
-        }
-        throw TailscaleClientError.unreadableOutput(Self.unreadableDetail(binary: binary, result: result))
+        // Report the first binary's failure: it is the one the user expects to work.
+        throw firstFailure ?? TailscaleClientError.binaryNotFound
     }
 
     // MARK: - Ping
@@ -170,12 +207,14 @@ struct TailscaleClient: TailscaleClienting {
         do {
             return (try runner.run(executable, arguments: arguments, timeout: timeout), executable)
         } catch let error as ProcessRunnerError {
-            switch error {
-            case .timedOut(let seconds):
-                throw TailscaleClientError.timedOut(seconds)
-            case .launchFailed(let reason):
-                throw TailscaleClientError.commandFailed(exitCode: -1, message: reason)
-            }
+            throw Self.clientError(for: error)
+        }
+    }
+
+    private static func clientError(for error: ProcessRunnerError) -> TailscaleClientError {
+        switch error {
+        case .timedOut(let seconds): return .timedOut(seconds)
+        case .launchFailed(let reason): return .commandFailed(exitCode: -1, message: reason)
         }
     }
 

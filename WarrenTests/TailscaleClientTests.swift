@@ -141,6 +141,63 @@ final class TailscaleClientTests: XCTestCase {
         }
     }
 
+    // MARK: - Falling back between binaries
+
+    /// The real failure this guards against: the CLI inside Tailscale.app prints
+    /// "The Tailscale GUI failed to start" on stdout and exits 0. An exit code is
+    /// not evidence of success, so the parse decides and the next binary is tried.
+    func testFallsBackWhenABinaryExitsZeroWithGarbage() throws {
+        let bundled = "/Applications/Tailscale.app/Contents/MacOS/tailscale"
+        let shim = "/usr/local/bin/tailscale"
+        let runner = FakeProcessRunner(standardOutput: "")
+        runner.setOutput("The Tailscale GUI failed to start: The operation couldn\u{2019}t be completed. (Tailscale.CLIError error 3.)",
+                         forPath: bundled)
+        runner.setOutput(try Fixture.data("status-sample"), forPath: shim)
+
+        let location = TailscaleBinaryLocation(candidates: [URL(fileURLWithPath: bundled),
+                                                           URL(fileURLWithPath: shim)])
+        let client = TailscaleClient(runner: runner, location: location)
+
+        XCTAssertEqual(try client.fetchStatus().peers.count, 5)
+        XCTAssertEqual(runner.invocations.map(\.executable.path), [bundled, shim])
+        // The one that answered is tried first next time.
+        XCTAssertEqual(location.current?.path, shim)
+    }
+
+    func testAnExplicitOverrideIsNeverSecondGuessed() {
+        let chosen = "/opt/homebrew/bin/tailscale"
+        let runner = FakeProcessRunner(standardOutput: "not json")
+        let client = TailscaleClient(runner: runner,
+                                     location: TailscaleBinaryLocation(url: URL(fileURLWithPath: chosen)))
+
+        XCTAssertThrowsError(try client.fetchStatus())
+        XCTAssertEqual(runner.invocations.map(\.executable.path), [chosen],
+                       "a user-chosen binary must not be silently swapped for another")
+    }
+
+    /// When nothing works, report the first binary's failure — that is the one the
+    /// user expects to be working.
+    func testWhenEveryBinaryFailsTheFirstFailureIsReported() {
+        let bundled = "/Applications/Tailscale.app/Contents/MacOS/tailscale"
+        let shim = "/usr/local/bin/tailscale"
+        let runner = FakeProcessRunner(standardOutput: "")
+        runner.setOutput("GUI failed to start", forPath: bundled)
+        runner.setOutput("also broken", forPath: shim)
+
+        let client = TailscaleClient(runner: runner,
+                                     location: TailscaleBinaryLocation(candidates: [
+                                        URL(fileURLWithPath: bundled), URL(fileURLWithPath: shim),
+                                     ]))
+        XCTAssertThrowsError(try client.fetchStatus()) { error in
+            guard case .unreadableOutput(let detail) = error as? TailscaleClientError else {
+                return XCTFail("expected .unreadableOutput, got \(error)")
+            }
+            XCTAssertTrue(detail.contains(bundled), detail)
+            XCTAssertTrue(detail.contains("GUI failed to start"), detail)
+        }
+        XCTAssertEqual(runner.invocations.count, 2, "both should have been tried")
+    }
+
     // MARK: - Untrusted input
 
     /// Device names arrive over the network. A name that could never be a host is

@@ -177,7 +177,14 @@ final class Preferences: ObservableObject {
 
     /// Resolves the configured path, or `nil` when it is set but unusable.
     func resolvedTailscaleURL() -> URL? {
-        TailscaleBinaryLocator.locate(override: tailscaleBinaryPath.isEmpty ? nil : tailscaleBinaryPath)
+        tailscaleBinaryCandidates().first
+    }
+
+    /// Every binary worth trying, best first. See `TailscaleClient.fetchStatus`.
+    func tailscaleBinaryCandidates() -> [URL] {
+        TailscaleBinaryLocator.usableCandidates(
+            override: tailscaleBinaryPath.isEmpty ? nil : tailscaleBinaryPath
+        )
     }
 
     // MARK: - Launch at login
