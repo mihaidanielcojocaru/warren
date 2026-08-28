@@ -36,7 +36,7 @@ final class DeviceStore: ObservableObject {
         self.preferences = preferences
 
         // A changed interval should take effect now, not after the next tick.
-        preferences.$pollInterval
+        preferences.pollIntervalPublisher
             .removeDuplicates()
             .sink { [weak self] _ in self?.rescheduleTimer() }
             .store(in: &cancellables)

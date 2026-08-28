@@ -108,12 +108,30 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(clickAction.rawValue, forKey: Key.clickAction) }
     }
 
-    @Published var pollInterval: Double {
-        didSet {
-            pollInterval = min(max(pollInterval, Self.pollIntervalRange.lowerBound),
-                               Self.pollIntervalRange.upperBound)
-            defaults.set(pollInterval, forKey: Key.pollInterval)
+    /// Backing storage for `pollInterval`.
+    ///
+    /// The clamp deliberately lives in the computed setter below and *not* in a
+    /// `didSet`. Assigning to a `@Published` property inside its own observer
+    /// re-enters the wrapper's setter and recurses until the stack runs out —
+    /// unlike a plain stored property, which suppresses the re-entry. That shape
+    /// crashed the app the moment the slider moved.
+    @Published private var storedPollInterval: Double
+
+    var pollInterval: Double {
+        get { storedPollInterval }
+        set {
+            let clamped = Self.clampPollInterval(newValue)
+            storedPollInterval = clamped
+            defaults.set(clamped, forKey: Key.pollInterval)
         }
+    }
+
+    /// For observers that need to react to the interval changing; `pollInterval`
+    /// is computed, so it has no projected publisher of its own.
+    var pollIntervalPublisher: Published<Double>.Publisher { $storedPollInterval }
+
+    private static func clampPollInterval(_ value: Double) -> Double {
+        min(max(value, pollIntervalRange.lowerBound), pollIntervalRange.upperBound)
     }
 
     /// Empty means "look in the usual places". See `TailscaleBinaryLocator`.
@@ -128,8 +146,10 @@ final class Preferences: ObservableObject {
         self.terminalApp = defaults.string(forKey: Key.terminalApp).flatMap(TerminalApp.init(rawValue:))
         self.clickAction = defaults.string(forKey: Key.clickAction)
             .flatMap(ClickAction.init(rawValue:)) ?? .ssh
+        // `double(forKey:)` yields 0 for a missing key, which is the "never set"
+        // case rather than a real value.
         let storedInterval = defaults.double(forKey: Key.pollInterval)
-        self.pollInterval = storedInterval == 0 ? 10 : storedInterval
+        self.storedPollInterval = Self.clampPollInterval(storedInterval == 0 ? 10 : storedInterval)
         self.tailscaleBinaryPath = defaults.string(forKey: Key.tailscaleBinaryPath) ?? ""
     }
 
