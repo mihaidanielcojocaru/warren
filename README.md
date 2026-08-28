@@ -54,8 +54,29 @@ Settings if you keep it elsewhere.
 
 ## Install
 
-Warren is not notarized for distribution yet, so build it yourself — it takes about a
-minute and needs nothing but Xcode.
+### Download
+
+Grab **Warren-1.0.dmg** from the [latest release](https://github.com/mihaidanielcojocaru/warren/releases/latest),
+open it, and drag Warren into your Applications folder.
+
+> [!IMPORTANT]
+> Warren is not notarized yet, so macOS will refuse to open it the first time.
+> This is Gatekeeper doing its job on a release that has not been signed with a paid
+> Developer ID certificate — not a sign anything is wrong with the app.
+>
+> Open **System Settings › Privacy & Security**, scroll down to Security, and click
+> **Open Anyway** next to the message about Warren. Or, from a terminal:
+>
+> ```sh
+> xattr -dr com.apple.quarantine /Applications/Warren.app
+> ```
+>
+> If you would rather not do either, build from source instead — the result is
+> identical and carries no quarantine flag.
+
+### Build from source
+
+It takes about a minute and needs nothing but Xcode.
 
 ```sh
 git clone https://github.com/mihaidanielcojocaru/warren.git
@@ -176,25 +197,26 @@ degrade rather than throw, and a single malformed peer never costs you the other
 
 ## Releasing
 
-Signed and notarized builds go out under Developer ID:
+`scripts/make-dmg.sh` does the whole thing: builds Release, signs, and packages the DMG
+with its background, window layout and volume icon.
 
 ```sh
-xcodebuild archive -scheme Warren -configuration Release \
-  -destination 'generic/platform=macOS' -archivePath build/Warren.xcarchive
-
-codesign --force --options runtime --timestamp \
-  --entitlements Warren/Warren.entitlements \
-  --sign "Developer ID Application: YOUR NAME (TEAMID)" \
-  build/Warren.xcarchive/Products/Applications/Warren.app
-
-ditto -c -k --keepParent \
-  build/Warren.xcarchive/Products/Applications/Warren.app build/Warren.zip
-xcrun notarytool submit build/Warren.zip --keychain-profile "warren-notary" --wait
-xcrun stapler staple build/Warren.xcarchive/Products/Applications/Warren.app
+./scripts/make-dmg.sh                    # ad-hoc signed — fine locally
+CODESIGN_IDENTITY="Developer ID Application: YOUR NAME (TEAMID)" ./scripts/make-dmg.sh
 ```
 
-Re-zip **after** stapling — the ticket attaches to the `.app`, not to the archive you
-submitted.
+For a build anyone can open without the Gatekeeper step above, you need a Developer ID
+certificate from the Apple Developer Program and a notarization pass:
+
+```sh
+xcrun notarytool store-credentials "warren-notary" \
+  --apple-id "you@example.com" --team-id TEAMID --password "app-specific-password"
+
+xcrun notarytool submit build/Warren-1.0.dmg --keychain-profile "warren-notary" --wait
+xcrun stapler staple build/Warren-1.0.dmg
+```
+
+A DMG can be stapled directly, so there is no need to re-zip anything afterwards.
 
 ## Contributing
 
