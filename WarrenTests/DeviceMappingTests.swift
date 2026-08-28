@@ -165,6 +165,23 @@ final class DeviceMappingTests: XCTestCase {
         XCTAssertEqual(DeviceOS(wireValue: nil).displayName, "Unknown")
     }
 
+    // MARK: - Taildrop availability
+
+    /// Tailscale reports 1 for "can take a file now"; anything else is a reason
+    /// it cannot. Trusting its verdict beats guessing from `online`.
+    func testTaildropAvailabilityFollowsTailscalesVerdict() {
+        XCTAssertTrue(Device.canReceiveFiles(peer: PeerStatus(online: true, taildropTarget: 1)))
+        XCTAssertFalse(Device.canReceiveFiles(peer: PeerStatus(online: false, taildropTarget: 5)))
+        // Online, but Tailscale says no — believe Tailscale.
+        XCTAssertFalse(Device.canReceiveFiles(peer: PeerStatus(online: true, taildropTarget: 7)))
+    }
+
+    /// Older daemons omit the field; fall back to the dominant reason.
+    func testTaildropFallsBackToOnlineWhenTheFieldIsMissing() {
+        XCTAssertTrue(Device.canReceiveFiles(peer: PeerStatus(online: true)))
+        XCTAssertFalse(Device.canReceiveFiles(peer: PeerStatus(online: false)))
+    }
+
     // MARK: - Snapshot
 
     func testSnapshotSeparatesSelfFromPeers() throws {

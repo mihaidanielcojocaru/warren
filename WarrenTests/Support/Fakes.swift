@@ -92,6 +92,12 @@ final class FakeTailscaleClient: TailscaleClienting, @unchecked Sendable {
     func ping(host: String) throws -> String { try pingResult.get() }
 
     func setExitNode(address: String?) throws { exitNodeCalls.append(address) }
+
+    private(set) var sentFiles: [(files: [URL], host: String)] = []
+
+    func sendFiles(_ files: [URL], to host: String) throws {
+        sentFiles.append((files, host))
+    }
 }
 
 /// Stands in for the daemon's loopback API. No socket is ever opened.

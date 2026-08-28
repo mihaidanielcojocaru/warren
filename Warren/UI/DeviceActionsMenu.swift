@@ -27,6 +27,10 @@ struct DeviceActionsMenu: View {
 
         Button(actions.fileTransferTitle(for: device)) { actions.openFileTransfer(for: device) }
             .disabled(!hasAddress)
+        // Taildrop needs nothing set up on either end, so it is offered wherever
+        // Tailscale says the peer can take it.
+        Button("Send Files…") { actions.sendFiles(to: device) }
+            .disabled(!hasAddress || !device.canReceiveFiles)
 
         Divider()
 

@@ -165,6 +165,10 @@ struct PeerStatus: Decodable, Equatable {
     var rxBytes: Int64
     var txBytes: Int64
 
+    /// Tailscale's own verdict on whether the peer can receive a Taildrop right
+    /// now. 1 means yes; other values are reasons why not. Absent on older builds.
+    var taildropTarget: Int?
+
     private enum CodingKeys: String, CodingKey {
         case id = "ID"
         case publicKey = "PublicKey"
@@ -180,6 +184,7 @@ struct PeerStatus: Decodable, Equatable {
         case active = "Active"
         case rxBytes = "RxBytes"
         case txBytes = "TxBytes"
+        case taildropTarget = "TaildropTarget"
     }
 
     init(from decoder: Decoder) throws {
@@ -198,6 +203,7 @@ struct PeerStatus: Decodable, Equatable {
         active = container.lossyBool(.active)
         rxBytes = container.lossyInt64(.rxBytes)
         txBytes = container.lossyInt64(.txBytes)
+        taildropTarget = container.lossy(Int.self, .taildropTarget)
     }
 }
 
@@ -291,7 +297,8 @@ extension PeerStatus {
         exitNodeOption: Bool = false,
         active: Bool = false,
         rxBytes: Int64 = 0,
-        txBytes: Int64 = 0
+        txBytes: Int64 = 0,
+        taildropTarget: Int? = nil
     ) {
         self.id = id
         self.publicKey = publicKey
@@ -307,6 +314,7 @@ extension PeerStatus {
         self.active = active
         self.rxBytes = rxBytes
         self.txBytes = txBytes
+        self.taildropTarget = taildropTarget
     }
 }
 

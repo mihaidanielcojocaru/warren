@@ -80,6 +80,29 @@ This was intermittent — all three binaries answered correctly when probed
 directly — so it is a race or a state inside Tailscale rather than a fixed
 property of that binary. Warren cannot fix that, only stop being fooled by it.
 
+## 3b. Which transport, and why
+
+Measured against a real 10-device tailnet, five of them online:
+
+| Transport | Reachable peers | Needs |
+| --- | --- | --- |
+| Taildrop | 5 of 5 | nothing |
+| SSH / SFTP | 3 of 5 | sshd, plus macFUSE locally to mount |
+| SMB | 1 of 5 | Samba or File Sharing on the peer |
+
+Hence the order: Taildrop first for sending, SMB first for browsing, sshfs and an
+SFTP client behind it. SMB is the nicest browsing experience when it exists — the
+Finder mounts it with no third-party software at all — but it exists rarely, so
+Warren probes port 445 rather than offering a mount that will fail.
+
+**An inference worth checking.** `TaildropTarget` is an integer and Tailscale does
+not document the values in `--help`. On this tailnet it was 1 for all five online
+peers and 5 for all five offline ones, so `1` is read as "can receive now" and
+anything else as a reason it cannot. `Device.canReceiveFiles` falls back to the
+`Online` flag when the field is missing, which is what older daemons do. If a peer
+that should accept files shows Send Files… greyed out, that mapping is the first
+place to look.
+
 ## 4. Things I checked rather than assumed
 
 - **`tailscale status --json` schema** — read off your live daemon (key names and

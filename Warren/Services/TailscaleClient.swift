@@ -95,6 +95,9 @@ protocol TailscaleClienting: Sendable {
 
     /// Routes traffic through `address`, or restores direct routing when `nil`.
     func setExitNode(address: String?) throws
+
+    /// Sends files to a peer over Taildrop.
+    func sendFiles(_ files: [URL], to host: String) throws
 }
 
 struct TailscaleClient: TailscaleClienting {
@@ -118,6 +121,9 @@ struct TailscaleClient: TailscaleClienting {
 
     /// `tailscale set` can bounce through an authorization prompt.
     var setTimeout: TimeInterval = 30
+
+    /// Taildrop transfers are as slow as the files are large.
+    var sendTimeout: TimeInterval = 900
 
     init(
         runner: ProcessRunning = ProcessRunner(),
@@ -244,6 +250,27 @@ struct TailscaleClient: TailscaleClienting {
             throw TailscaleClientError.commandFailed(
                 exitCode: result.exitCode,
                 message: Self.message(from: result)
+            )
+        }
+    }
+
+    // MARK: - Taildrop
+
+    /// `tailscale file cp <files...> <target>:` — the trailing colon is required.
+    ///
+    /// This is the friendliest transfer Warren can offer: it needs nothing set up
+    /// on either machine, no file sharing, no sshd, no macFUSE.
+    func sendFiles(_ files: [URL], to host: String) throws {
+        guard ConnectionTarget.isValidHost(host) else {
+            throw TailscaleClientError.invalidTarget(host)
+        }
+        guard !files.isEmpty else { return }
+
+        let arguments = ["file", "cp"] + files.map(\.path) + ["\(host):"]
+        let (result, _) = try execute(arguments, timeout: sendTimeout)
+        guard result.didSucceed else {
+            throw TailscaleClientError.commandFailed(
+                exitCode: result.exitCode, message: Self.message(from: result)
             )
         }
     }

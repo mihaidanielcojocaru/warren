@@ -37,6 +37,13 @@ protocol MountManaging {
     func mount(device: Device, username: String, host: String) async throws
     func unmount(device: Device) async throws
 
+    /// True when the peer has something listening on the SMB port.
+    func isSMBAvailable(host: String) -> Bool
+
+    /// Hands `smb://host` to the Finder, which mounts it natively — no macFUSE,
+    /// no third-party client. Returns false if the Finder refused the URL.
+    func openSMB(host: String) -> Bool
+
     /// Hands `sftp://user@host` to whichever client is registered — Cyberduck,
     /// Transmit, Mountain Duck. Returns false when nothing claims the scheme.
     func openInExternalClient(username: String, host: String) -> Bool
@@ -149,6 +156,23 @@ struct MountManager: MountManaging {
         if let contents = try? fileManager.contentsOfDirectory(atPath: mountPoint.path), contents.isEmpty {
             try? fileManager.removeItem(at: mountPoint)
         }
+    }
+
+    // MARK: - SMB
+
+    /// The Finder speaks SMB natively, so where a peer serves it this is by far
+    /// the least friction: no macFUSE, no extra app, and it mounts read-write.
+    func isSMBAvailable(host: String) -> Bool {
+        PortProbe.isOpen(host: host, port: 445)
+    }
+
+    /// Deliberately without a user name. The SMB login on a NAS is usually not
+    /// the SSH one, and the Finder remembers the right credentials in the
+    /// keychain after the first connection anyway.
+    func openSMB(host: String) -> Bool {
+        guard ConnectionTarget.isValidHost(host),
+              let url = URL(string: "smb://\(host)") else { return false }
+        return NSWorkspace.shared.open(url)
     }
 
     // MARK: - Fallbacks

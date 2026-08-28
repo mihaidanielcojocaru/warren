@@ -104,31 +104,48 @@ final class DeviceActions: ObservableObject {
     // MARK: - File transfer
 
     func fileTransferTitle(for device: Device) -> String {
-        guard mounts.isSSHFSAvailable else { return "Open in Finder (SFTP)…" }
-        return mounts.isMounted(device) ? "Unmount \(device.displayName)" : "Mount with sshfs"
+        mounts.isMounted(device) ? "Unmount \(device.displayName)" : "Open in Finder…"
     }
 
+    /// Picks the friendliest transport the peer actually supports, in order:
+    /// SMB (the Finder mounts it natively), then sshfs, then whatever claims
+    /// `sftp://`, and only then gives up with something copyable.
+    ///
+    /// The SMB probe is a TCP connect, so it happens off the main thread.
     func openFileTransfer(for device: Device) {
         guard let host = device.connectionHost else {
             return AlertPresenter.notify(title: "\(device.displayName) has no address")
         }
         let login = preferences.username(for: device)
 
-        if mounts.isSSHFSAvailable {
+        if mounts.isMounted(device) {
             Task { await toggleMount(device: device, username: login, host: host) }
             return
         }
 
-        // No macFUSE: hand it to whatever SFTP client is registered.
-        if mounts.openInExternalClient(username: login, host: host) { return }
+        Task {
+            let servesSMB = (try? await offMain { self.mounts.isSMBAvailable(host: host) }) ?? false
+            if servesSMB, mounts.openSMB(host: host) { return }
 
-        // Nothing can open it. Say why, and leave something usable behind.
-        let command = mounts.sftpCommand(username: login, host: host)
+            if mounts.isSSHFSAvailable {
+                await toggleMount(device: device, username: login, host: host)
+                return
+            }
+            if mounts.openInExternalClient(username: login, host: host) { return }
+            offerTheCommand(for: device, username: login, host: host)
+        }
+    }
+
+    private func offerTheCommand(for device: Device, username: String, host: String) {
+        let command = mounts.sftpCommand(username: username, host: host)
         let copyIt = AlertPresenter.show(
-            title: "No file transfer app is available",
+            title: "\(device.displayName) is not sharing any files",
             message: """
-            The Finder cannot open sftp:// connections. Install macFUSE and sshfs to mount \
-            \(device.displayName) as a volume, or an SFTP client such as Cyberduck or Transmit.
+            It is not serving SMB, and the Finder cannot open sftp:// connections on its own.
+
+            Turn on file sharing on \(device.displayName), install macFUSE and sshfs to mount \
+            it as a volume, or use an SFTP client such as Cyberduck or Transmit. \
+            Send Files… works without any of that.
 
             In the meantime you can run:
             \(command)
@@ -137,6 +154,33 @@ final class DeviceActions: ObservableObject {
             buttons: ["Copy Command", "Cancel"]
         )
         if copyIt { Clipboard.copy(command) }
+    }
+
+    // MARK: - Taildrop
+
+    /// Sends files with Taildrop, which needs nothing configured on either end.
+    func sendFiles(to device: Device) {
+        guard let host = device.connectionHost else {
+            return AlertPresenter.notify(title: "\(device.displayName) has no address")
+        }
+        guard let files = FilePicker.chooseFiles(prompt: "Send to \(device.displayName)"),
+              !files.isEmpty else { return }
+
+        Task {
+            do {
+                try await offMain { try self.client.sendFiles(files, to: host) }
+                let names = files.count == 1
+                    ? files[0].lastPathComponent
+                    : "\(files.count) files"
+                AlertPresenter.show(
+                    title: "Sent \(names) to \(device.displayName)",
+                    message: "They will land in the Tailscale file inbox on that device.",
+                    style: .informational
+                )
+            } catch {
+                AlertPresenter.show(error: error)
+            }
+        }
     }
 
     private func toggleMount(device: Device, username: String, host: String) async {

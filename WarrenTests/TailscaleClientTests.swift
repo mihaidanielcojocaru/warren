@@ -209,6 +209,34 @@ final class TailscaleClientTests: XCTestCase {
         XCTAssertEqual(statusCalls(runner).count, 2, "both should have been tried")
     }
 
+    // MARK: - Taildrop
+
+    /// The trailing colon on the target is required by `tailscale file cp`.
+    func testSendFilesBuildsTheDocumentedArgumentVector() throws {
+        let runner = FakeProcessRunner(standardOutput: "")
+        try makeClient(runner).sendFiles(
+            [URL(fileURLWithPath: "/tmp/notes.txt"), URL(fileURLWithPath: "/tmp/photo.png")],
+            to: "nas.tailnet-example.ts.net"
+        )
+        XCTAssertEqual(runner.lastInvocation?.arguments,
+                       ["file", "cp", "/tmp/notes.txt", "/tmp/photo.png",
+                        "nas.tailnet-example.ts.net:"])
+    }
+
+    func testSendFilesRefusesAHostileHost() {
+        let runner = FakeProcessRunner(standardOutput: "")
+        XCTAssertThrowsError(
+            try makeClient(runner).sendFiles([URL(fileURLWithPath: "/tmp/x")], to: "nas; rm -rf ~")
+        )
+        XCTAssertTrue(runner.invocations.isEmpty)
+    }
+
+    func testSendingNothingDoesNothing() throws {
+        let runner = FakeProcessRunner(standardOutput: "")
+        try makeClient(runner).sendFiles([], to: "nas")
+        XCTAssertTrue(runner.invocations.isEmpty)
+    }
+
     // MARK: - Untrusted input
 
     /// Device names arrive over the network. A name that could never be a host is

@@ -34,7 +34,8 @@ It is free, open source, and does not phone home.
 |  | |
 | --- | --- |
 | **One-click SSH** | Click any device to open a session in your terminal. Ghostty, iTerm2, WezTerm, Kitty, Alacritty and Terminal.app are all supported. |
-| **File transfer** | Mount a device over `sshfs` when macFUSE is installed, or hand it to Cyberduck, Transmit or Mountain Duck. |
+| **Send files anywhere** | Taildrop needs nothing set up on either machine — it works to every online peer, including phones. |
+| **Open in Finder** | Mounts over SMB natively where the peer shares files, then falls back to `sshfs` or an SFTP client. |
 | **Live status** | Online devices with a green dot, offline ones tucked into a collapsed group with "3 hours ago" timestamps. |
 | **Exit nodes** | See which node is carrying your traffic, and switch it from the menu. |
 | **Ping** | Check a peer from the Tailscale layer without leaving the menu. |
@@ -122,16 +123,28 @@ Offline devices keep SSH and file transfer enabled on purpose. Tailscale's idea 
 
 ## File transfer, honestly
 
-The Finder cannot mount `sftp://`. Apple removed that years ago, and no amount of
-coaxing brings it back — so Warren does not pretend otherwise. Instead it tries, in
-order:
+macOS is bad at this and most tools paper over it. Warren picks whichever transport
+the peer actually supports, best first.
 
-1. **`sshfs`**, if it and macFUSE are installed. Mounts to `~/Warren Mounts/<device>`
-   and reveals it in the Finder. The same menu item unmounts it afterwards.
-2. **An SFTP client** — whatever is registered for `sftp://`, such as Cyberduck,
+**Send Files…** uses [Taildrop](https://tailscale.com/kb/1106/taildrop), and it is the
+one that almost always works: nothing to install, nothing to configure, no file sharing
+to switch on, and it reaches phones as well as servers. Files land in the Tailscale
+inbox on the other device. Warren offers it wherever Tailscale itself reports the peer
+can take a file.
+
+**Open in Finder…** wants to browse, so it tries harder:
+
+1. **SMB**, if the peer has something listening on port 445. The Finder mounts this
+   natively — no extra software on either side — and it is read-write. Warren knocks on
+   the port first rather than offering a mount that cannot work.
+2. **`sshfs`**, if it and macFUSE are installed. Mounts to `~/Warren Mounts/<device>`
+   and reveals it in the Finder; the same menu item unmounts it.
+3. **An SFTP client** — whatever is registered for `sftp://`, such as Cyberduck,
    Transmit or Mountain Duck.
-3. **The clipboard**, with a plain `sftp user@host` command, and an explanation of why
-   the first two were not available.
+4. **The clipboard**, with a plain `sftp user@host` command and an explanation.
+
+The Finder cannot mount `sftp://` by itself — Apple removed that years ago — so Warren
+does not pretend otherwise. That is exactly why Taildrop and SMB come first.
 
 ## Settings
 

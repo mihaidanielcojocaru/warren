@@ -54,6 +54,11 @@ struct Device: Identifiable, Hashable {
     let txBytes: Int64
     let userID: Int64?
 
+    /// Whether Tailscale will accept a Taildrop for this peer right now. Works
+    /// with no setup at all on either end, which is why it is the first thing
+    /// the file-transfer actions reach for.
+    let canReceiveFiles: Bool
+
     /// What `ssh` and `sftp` get pointed at: the MagicDNS name when there is
     /// one, else the first tailnet address. `nil` for a node with neither —
     /// the menu still lists it, but the connect actions are disabled.
@@ -95,8 +100,18 @@ extension Device {
             isActive: peer.active,
             rxBytes: peer.rxBytes,
             txBytes: peer.txBytes,
-            userID: peer.userID
+            userID: peer.userID,
+            canReceiveFiles: Device.canReceiveFiles(peer: peer)
         )
+    }
+
+    /// 1 is Tailscale's "available"; the other values are reasons it is not
+    /// (offline, unsupported OS, owned by another user…). When the field is
+    /// missing — an older daemon — fall back to whether the peer is online,
+    /// which is the dominant reason in practice.
+    static func canReceiveFiles(peer: PeerStatus) -> Bool {
+        guard let target = peer.taildropTarget else { return peer.online }
+        return target == 1
     }
 
     /// `nas.tailnet-example.ts.net.` → `nas.tailnet-example.ts.net`.
