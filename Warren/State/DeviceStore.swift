@@ -29,6 +29,10 @@ final class DeviceStore: ObservableObject {
     private let pollQueue = DispatchQueue(label: "com.mihaicojocaru.Warren.poll", qos: .userInitiated)
     private var timer: Timer?
     private var isMenuOpen = false
+
+    /// Drives the retry backoff below.
+    private var consecutiveFailures = 0
+    private var retry: DispatchWorkItem?
     private var cancellables = Set<AnyCancellable>()
 
     init(client: TailscaleClienting, preferences: Preferences) {
@@ -93,10 +97,35 @@ final class DeviceStore: ObservableObject {
     private func apply(_ result: Result<TailscaleStatus, Error>) {
         switch result {
         case .success(let status):
+            consecutiveFailures = 0
+            retry?.cancel()
             state = TailnetState(snapshot: TailnetSnapshot(status: status))
         case .failure(let error):
+            consecutiveFailures += 1
             state = Self.state(for: error)
+            scheduleRetry()
         }
+    }
+
+    /// A failed poll must not leave the menu sitting on an error for a whole
+    /// interval — up to a minute with the menu closed. The daemon is often just
+    /// still starting up, so retry quickly and back off, and the state heals
+    /// itself in a second or two instead of looking broken.
+    private func scheduleRetry() {
+        retry?.cancel()
+        let delay = Self.retryDelay(afterFailures: consecutiveFailures,
+                                    pollInterval: preferences.pollInterval)
+        let work = DispatchWorkItem { [weak self] in self?.refresh() }
+        retry = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// 1s, 2s, 4s, 8s… never longer than a normal poll, because at that point the
+    /// timer takes over anyway.
+    static func retryDelay(afterFailures failures: Int, pollInterval: TimeInterval) -> TimeInterval {
+        guard failures > 0 else { return pollInterval }
+        let backoff = pow(2, Double(failures - 1))
+        return min(backoff, pollInterval)
     }
 
     /// Every failure gets its own calm menu item rather than an alert.

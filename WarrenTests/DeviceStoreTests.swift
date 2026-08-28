@@ -131,3 +131,41 @@ final class DeviceStoreTests: XCTestCase {
         XCTAssertTrue(store.searchText.isEmpty)
     }
 }
+
+// MARK: - Retry backoff
+
+extension DeviceStoreTests {
+
+    /// A transient failure should heal in about a second, not sit there until the
+    /// next scheduled poll.
+    func testRetryBacksOffButNeverExceedsThePollInterval() {
+        XCTAssertEqual(DeviceStore.retryDelay(afterFailures: 1, pollInterval: 10), 1)
+        XCTAssertEqual(DeviceStore.retryDelay(afterFailures: 2, pollInterval: 10), 2)
+        XCTAssertEqual(DeviceStore.retryDelay(afterFailures: 3, pollInterval: 10), 4)
+        XCTAssertEqual(DeviceStore.retryDelay(afterFailures: 4, pollInterval: 10), 8)
+        // Capped: past this the ordinary timer is doing the work anyway.
+        XCTAssertEqual(DeviceStore.retryDelay(afterFailures: 5, pollInterval: 10), 10)
+        XCTAssertEqual(DeviceStore.retryDelay(afterFailures: 9, pollInterval: 60), 60)
+        XCTAssertEqual(DeviceStore.retryDelay(afterFailures: 0, pollInterval: 10), 10)
+    }
+
+    /// The point of the retry: a store that failed once recovers on its own.
+    func testStoreRecoversOnItsOwnAfterATransientFailure() throws {
+        let client = FakeTailscaleClient(statusResult: .failure(TailscaleClientError.timedOut(5)))
+        let store = makeStore(client)
+        refreshAndWait(store)
+        guard case .unreachable = store.state else {
+            return XCTFail("expected .unreachable first, got \(store.state)")
+        }
+
+        // The daemon comes back; the scheduled retry should pick it up unaided.
+        client.statusResult = .success(try Fixture.sampleStatus())
+        let recovered = expectation(description: "state recovers without another nudge")
+        store.$state
+            .drop { if case .ready = $0 { return false } else { return true } }
+            .first()
+            .sink { _ in recovered.fulfill() }
+            .store(in: &cancellables)
+        wait(for: [recovered], timeout: 4)
+    }
+}
